@@ -114,10 +114,8 @@ class CSP:
 
     def revise(self,var):
         for x in self.neighbors[var]:
-            if ((var,x) in self.conDict):
-                self.weights[(var,x)] += 1
-            else:
-                self.weights[(x,var)] += 1
+            self.weights[(var,x)] += 1
+            self.weights[(x,var)] += 1
 
 
 
@@ -137,10 +135,7 @@ def wdeg(x,assignment,csp):
     sum = 0
     for y in csp.neighbors[x]:
         if (y not in assignment):
-            if ((y,x) in csp.conDict):
-                sum += csp.weights[(y,x)]
-            else:
-                sum += csp.weights[(x,y)]
+            sum += csp.weights[(y,x)]
     if (sum == 0):
         sum = 1
     return sum
@@ -151,8 +146,8 @@ def dom_wdeg_ordering(assignment,csp):
     for var in csp.variables:
         if var not in assignment:
             wd = wdeg(var,assignment,csp)
-            dom = len(csp.neighbors[var])
-            temp = dom / (2 * wd)
+            dom = len(csp.domains[var])
+            temp = dom / wd
             if (minVal > temp):
                 minVal = temp
                 min = var
@@ -221,7 +216,7 @@ def forward_checking(csp,var,value,assignment,removals):
 
 import time
 
-def backtracking_search(csp,select_unassigned_variable = mrv,order_domain_values = unordered_domain_values,inference = forward_checking):#no_inference):
+def backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order_domain_values = unordered_domain_values,inference = forward_checking):#no_inference):
     startTime = time.time()
     def backtrack(assignment,startTime):
         if len(assignment) == len(csp.variables):
@@ -251,10 +246,7 @@ def backtracking_search(csp,select_unassigned_variable = mrv,order_domain_values
     return result
 
 def constraints(A,a,B,b,conDict):
-    if ((A,B) in conDict):
-        ctr = conDict[(A,B)]
-    else:
-        ctr = conDict[(B,A)]
+    ctr = conDict[(A,B)]
     if (ctr[0] == "="):
         return abs(int(a) - int(b)) == int(ctr[1]) 
     else:
@@ -315,6 +307,7 @@ def my_main():
                 neighbors[temp] = [l1[0]]
             l2 = l1
             conDict[(l1[0],l1[1])] = (l1[2],l1[3])
+            conDict[(l1[1],l1[0])] = (l1[2],l1[3])
         
     problem = CSP(variables,domains,neighbors,constraints,conDict)
     temp = backtracking_search(problem)
