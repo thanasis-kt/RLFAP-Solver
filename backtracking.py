@@ -9,6 +9,11 @@ from collections import defaultdict, Counter
 from functools import reduce
 from operator import eq, neg
 
+
+# from sortedcontainers import SortedSet #FIND PATH
+
+import utils
+
 class CSP:
     def __init__(self,variables,domains,neighbors,constraints,conDict):
         self.variables = variables
@@ -118,15 +123,126 @@ class CSP:
         for B, b in removals:
             self.curr_domains[B].append(b)
 
-    def revise(self,var):
+    def revise(self,var,assignment):
         for x in self.neighbors[var]:
-            self.weights[(var,x)] += 1
-            self.weights[(x,var)] += 1
+            if x in assignment:
+                self.weights[(var,x)] += 1
+            # self.weights[(x,var)] += 1
 
     def conflicted_vars(self, current):
         """Return a list of variables in current assignment that are in conflict"""
         return [var for var in self.variables
                 if self.nconflicts(var, current[var], current) > 0]
+
+
+#Arc consistency related functions
+    
+def no_arc_heuristic(csp,queue):
+    return queue 
+
+# def dom_j_up(csp, queue):
+#     return SortedSet(queue, key=lambda t: neg(len(csp.curr_domains[t[1]])))
+
+def revise(csp,Xi,Xj,removals,checks = 0):
+    revised = False
+    for x in csp.curr_domains[Xi][:]:
+        conflict = True
+        for y in csp.curr_domains[Xj]:
+            if csp.constraints(Xi,x,Xj,y,csp.conDict):
+                conflict = False
+            checks += 1
+            if not conflict:
+                break
+        if conflict:
+            csp.weights[(Xj,Xi)] += 1
+            csp.weights[(Xi,Xj)] += 1
+            csp.prune(Xi,x,removals)
+            revised = True
+    return revised, checks
+
+def AC3b(csp, queue=None,removals = None,arc_heuristic=no_arc_heuristic):
+    if queue is None:
+        queue = {(Xi,Xk) for Xi in csp.variables for Xk in csp.neighbors[Xi]}
+
+    csp.support_pruning()
+    queue = arc_heuristic(csp,queue)
+    checks = 0
+    while queue:
+        (Xi,Xj) = queue.pop()
+        # Si_p values are all known to be supported by Xj
+        # Sj_p values are all known to be supported by Xi
+        # Dj - Sj_p = Sj_u values are unknown, as yet, to be supported by Xi
+        Si_p, Sj_p, Sj_u, checks = partition(csp, Xi, Xj, checks)
+        if not Si_p:
+            return False, checks  # CSP is inconsistent
+        revised = False
+        for x in set(csp.curr_domains[Xi]) - Si_p:
+            csp.prune(Xi, x, removals)
+            revised = True
+        if revised:
+            for Xk in csp.neighbors[Xi]:
+                if Xk != Xj:
+                    queue.add((Xk,Xi))
+        if (Xj,Xi) in queue:
+            if isinstance(queue,set):
+                queue.difference_update({(Xj,Xi)})
+            else:
+                queue.defference_update({(Xj,Xi)})
+                # the elements in D_j which are supported by Xi are given by the union of Sj_p with the set of those
+                # elements of Sj_u which further processing will show to be supported by some vi_p in Si_p
+            for vj_p in Sj_u:
+                for vi_p in Si_p:
+                    conflict = True
+                    if csp.constraints(Xj, vj_p, Xi, vi_p,csp.conDict):
+                        conflict = False
+                        Sj_p.add(vj_p)
+                    checks += 1
+                    if not conflict:
+                        break
+            revised = False
+            for x in set(csp.curr_domains[Xj]) - Sj_p:
+                csp.prune(Xj, x, removals)
+                revised = True
+            if revised:
+                for Xk in csp.neighbors[Xj]:
+                    if Xk != Xi:
+                        queue.add((Xk, Xj))
+    return True, checks  # CSP is satisfiable
+
+
+def partition(csp, Xi, Xj, checks=0):
+    Si_p = set()
+    Sj_p = set()
+    Sj_u = set(csp.curr_domains[Xj])
+    for vi_u in csp.curr_domains[Xi]:
+        conflict = True
+        # now, in order to establish support for a value vi_u in Di it seems better to try to find a support among
+        # the values in Sj_u first, because for each vj_u in Sj_u the check (vi_u, vj_u) is a double-support check
+        # and it is just as likely that any vj_u in Sj_u supports vi_u than it is that any vj_p in Sj_p does...
+        for vj_u in Sj_u - Sj_p:
+            # double-support check
+            if csp.constraints(Xi, vi_u, Xj, vj_u,csp.conDict):
+                conflict = False
+                Si_p.add(vi_u)
+                Sj_p.add(vj_u)
+            checks += 1
+            if not conflict:
+                break
+        # ... and only if no support can be found among the elements in Sj_u, should the elements vj_p in Sj_p be used
+        # for single-support checks (vi_u, vj_p)
+        if conflict:
+            for vj_p in Sj_p:
+                # single-support check
+                if csp.constraints(Xi, vi_u, Xj, vj_p,csp.conDict):
+                    conflict = False
+                    Si_p.add(vi_u)
+                checks += 1
+                if not conflict:
+                    break
+    return Si_p, Sj_p, Sj_u - Sj_p, checks
+
+
+
 
 
 
@@ -146,14 +262,17 @@ def wdeg(x,assignment,csp):
     sum = 0
     for y in csp.neighbors[x]:
         if (y not in assignment):
-            sum += csp.weights[(y,x)]
+            sum += csp.weights[(x,y)]
     if (sum == 0):
-        sum = 1
+        return 1
+    else:
+        x = 23
     return sum
 
 def dom_wdeg_ordering(assignment,csp):
     minVal = +100000000
-    min = first_unassigned_variable(assignment,csp) #!!!!!EXPLAIN
+    # min = first_unassigned_variable(assignment,csp) #!!!!!EXPLAIN
+    min = None
     for var in csp.variables:
         if var not in assignment:
             wd = wdeg(var,assignment,csp)
@@ -219,23 +338,32 @@ def forward_checking(csp,var,value,assignment,removals):
                     csp.prune(B,b,removals)
                     csp.conflicts[var].add(B)
             if not csp.curr_domains[B]:
-                csp.revise(var)
-                return False
+                # csp.revise(var)
+                #dom/wdeg
+                csp.weights[(var,B)] += 1
+                csp.weights[(B,var)] += 1
+                #CBJ
+                
     return True
+
+def mac(csp, var, value, assignment, removals, constraint_propagation=AC3b):
+    """Maintain arc consistency."""
+    return constraint_propagation(csp, {(X, var) for X in csp.neighbors[var]}, removals)
+
 
 
 #Backtracking algorithm
 
 import time
 
-def backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order_domain_values = unordered_domain_values,inference = forward_checking):#no_inference):
+def backtracking_search(csp,select_unassigned_variable = mrv,order_domain_values = unordered_domain_values,inference = mac):#no_inference):
     startTime = time.time()
     def backtrack(assignment,startTime,depth):
         if len(assignment) == len(csp.variables):
             return (assignment,0)
         if (time.time() - startTime > 500):
             print("Didn't finish\n")
-            return None
+            return (None,0)
         var = select_unassigned_variable(assignment,csp)
         csp.depth[var] = depth
         for value in order_domain_values(var,assignment,csp):
@@ -250,14 +378,16 @@ def backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order
                         return (None,result[1] - 1)
                     if result[0] is not None:
                         return (result[0],0)
-                csp.restore(removals)
-            # else:
-            #     for b in assignment:
-            #         if not csp.constraints(var,value,b,assignment[b]):
-            #             if b not in csp.conflicts[var]:
-            #                 csp.conflicts[var].append(b)
-
+                    csp.restore(removals)
+            else:
+                for B in csp.neighbors[var]:
+                    if B in assignment:
+                        if (csp.constraints(var,value,B,assignment[B],csp.conDict)):
+                            csp.conflicts[var].add(B)
         del csp.depth[var]
+        csp.unassign(var,assignment)
+        #Domain is empty
+        # csp.revise(var)   
         maxDepth = 0
         max = None
         for b in csp.conflicts[var]:
@@ -267,11 +397,10 @@ def backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order
                 max = b
         if max != None:
             csp.conflicts[max] = csp.conflicts[max].union(csp.conflicts[var]) 
-        csp.unassign(var,assignment)
-        #Domain is empty
-        # csp.revise(var)   
+        return (None,maxDepth - depth - 1)
 
-        return (None,0)
+
+
     import datetime
     result,depth = backtrack({},startTime,0)
     convert = str(datetime.timedelta(seconds = time.time() - startTime))
@@ -289,15 +418,16 @@ def constraints(A,a,B,b,conDict):
 import os
 
 def my_main():
-    print("we will use file 3-f10\n")
+    prefix = "2-f24" #!!!!CHANGE NAME!!!!
+    print("we will use file" + prefix + "\n")
     variables = []
     #Creating the list variables
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir , "rlfap\\var3-f10.txt")
+    file_path = os.path.join(script_dir , "rlfap\\var" + prefix + ".txt")
     var = open(file_path,"r")
     #str is every line
 
-    file_path = os.path.join(script_dir , "rlfap\dom3-f10.txt")
+    file_path = os.path.join(script_dir , "rlfap\dom" + prefix + ".txt")
     dom = open(file_path,"r")
     #
     #Create the domains
@@ -322,7 +452,7 @@ def my_main():
             first = True
     
     #Create the neighbors and constraints function 
-    file_path = os.path.join(script_dir , "rlfap\ctr3-f10.txt")
+    file_path = os.path.join(script_dir , "rlfap\ctr" + prefix + ".txt")
     ctr = open(file_path,"r")
     neighbors = {}
     conDict = {}
@@ -339,7 +469,6 @@ def my_main():
                 neighbors[temp].append(l1[0])
             else:
                 neighbors[temp] = [l1[0]]
-            l2 = l1
             conDict[(l1[0],l1[1])] = (l1[2],l1[3])
             conDict[(l1[1],l1[0])] = (l1[2],l1[3])
         
