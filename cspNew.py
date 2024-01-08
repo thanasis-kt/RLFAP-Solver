@@ -13,6 +13,7 @@ from operator import eq, neg
 import search
 from utils import argmin_random_tie, count, first, extend
 
+import time
 
 class CSP(search.Problem):
     """This class describes finite-domain Constraint Satisfaction Problems.
@@ -354,8 +355,6 @@ def wdeg(x,assignment,csp):
             sum += csp.weights[(x,y)]
     if (sum == 0):
         return 1
-    else:
-        x = 23
     return sum
 
 def dom_wdeg_ordering(assignment,csp):
@@ -365,7 +364,10 @@ def dom_wdeg_ordering(assignment,csp):
     for var in csp.variables:
         if var not in assignment:
             wd = wdeg(var,assignment,csp)
-            dom = len(csp.domains[var])
+            if (csp.curr_domains != None):
+                dom = len(csp.curr_domains[var])
+            else:
+                dom = 0
             temp = dom / wd
             if (minVal > temp):
                 minVal = temp
@@ -436,23 +438,31 @@ def backtracking_search(csp, select_unassigned_variable=dom_wdeg_ordering,
                         order_domain_values=unordered_domain_values, inference=forward_checking):
     """[Figure 6.5]"""
 
-    def backtrack(assignment):
+
+    def backtrack(assignment,startTime):
         if len(assignment) == len(csp.variables):
             return assignment
+        if (time.time() - startTime > 50):
+            print("Didn't finish\n")
+            return (None,0)
         var = select_unassigned_variable(assignment, csp)
         for value in order_domain_values(var, assignment, csp):
             if 0 == csp.nconflicts(var, value, assignment):
                 csp.assign(var, value, assignment)
                 removals = csp.suppose(var, value)
                 if inference(csp, var, value, assignment, removals):
-                    result = backtrack(assignment)
+                    result = backtrack(assignment,startTime)
                     if result is not None:
                         return result
                 csp.restore(removals)
         csp.unassign(var, assignment)
         return None
-
-    result = backtrack({})
+    import datetime
+    startTime = time.time()
+    result = backtrack({},startTime)
+    convert = str(datetime.timedelta(seconds = time.time() - startTime))
+    print("Running time: ",convert)
+    # result = backtrack({},startTime)
     assert result is None or csp.goal_test(result)
     return result
 
@@ -1502,7 +1512,7 @@ class rlfap(CSP):
 import os
 
 def my_main():
-    prefix = "2-f25" #!!!!CHANGE NAME!!!!
+    prefix = "3-f10" #!!!!CHANGE NAME!!!!
     print("we will use file" + prefix + "\n")
     variables = []
     #Creating the list variables
@@ -1556,7 +1566,7 @@ def my_main():
             conDict[(l1[0],l1[1])] = (l1[2],l1[3])
             conDict[(l1[1],l1[0])] = (l1[2],l1[3])
         
-    problem = rlfap(variables,domains,neighbors,conDict)
+    problem = rlfap(variables,domains,neighbors,conDict,)
     print("BACKTRACKING STARTING")
     print(backtracking_search(problem))
     # print(min_conflicts(problem))
