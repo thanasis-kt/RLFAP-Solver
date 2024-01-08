@@ -9,10 +9,17 @@ from collections import defaultdict, Counter
 from functools import reduce
 from operator import eq, neg
 
+import utils #Probably remove this part or include it like it is
 
-# from sortedcontainers import SortedSet #FIND PATH
+# TODO LIST:
 
-import utils
+#     1) Implement cbj for mac
+#     2) Fix dom/wdeg heuristic (or find why it doesn't work well)
+#     3) Try catch finally for time
+#     4) Comments
+#     5) split into files
+
+
 
 class CSP:
     def __init__(self,variables,domains,neighbors,constraints,conDict):
@@ -27,6 +34,7 @@ class CSP:
         self.weights = {} #Map that stores the weights
                          # for the dom/wdeg heuristic
         for c in conDict:
+            
             self.weights[c] = 1 #Initializing weights
         
         self.depth = {} #To track each variables depth (we use dynamic ordering)
@@ -160,6 +168,27 @@ def revise(csp,Xi,Xj,removals,checks = 0):
             revised = True
     return revised, checks
 
+def AC3(csp, queue=None, removals=None, arc_heuristic=no_arc_heuristic):
+    """[Figure 6.3]"""
+    if queue is None:
+        queue = {(Xi, Xk) for Xi in csp.variables for Xk in csp.neighbors[Xi]}
+    csp.support_pruning()
+    queue = arc_heuristic(csp, queue)
+    checks = 0
+    while queue:
+        (Xi, Xj) = queue.pop()
+        revised, checks = revise(csp, Xi, Xj, removals, checks)
+        if revised:
+            if not csp.curr_domains[Xi]:
+                return False, checks  # CSP is inconsistent
+            for Xk in csp.neighbors[Xi]:
+                if Xk != Xj:
+                    queue.add((Xk, Xi))
+    return True, checks  # CSP is satisfiable
+
+
+
+
 def AC3b(csp, queue=None,removals = None,arc_heuristic=no_arc_heuristic):
     if queue is None:
         queue = {(Xi,Xk) for Xi in csp.variables for Xk in csp.neighbors[Xi]}
@@ -187,7 +216,7 @@ def AC3b(csp, queue=None,removals = None,arc_heuristic=no_arc_heuristic):
             if isinstance(queue,set):
                 queue.difference_update({(Xj,Xi)})
             else:
-                queue.defference_update({(Xj,Xi)})
+                queue.difference_update({(Xj,Xi)})
                 # the elements in D_j which are supported by Xi are given by the union of Sj_p with the set of those
                 # elements of Sj_u which further processing will show to be supported by some vi_p in Si_p
             for vj_p in Sj_u:
@@ -207,7 +236,10 @@ def AC3b(csp, queue=None,removals = None,arc_heuristic=no_arc_heuristic):
                 for Xk in csp.neighbors[Xj]:
                     if Xk != Xi:
                         queue.add((Xk, Xj))
-    return True, checks  # CSP is satisfiable
+            else:
+                csp.weights[(Xj,Xi)] += 1
+                csp.weights[(Xi,Xj)] += 1               
+        return True, checks  # CSP is satisfiable
 
 
 def partition(csp, Xi, Xj, checks=0):
@@ -346,7 +378,7 @@ def forward_checking(csp,var,value,assignment,removals):
                 
     return True
 
-def mac(csp, var, value, assignment, removals, constraint_propagation=AC3b):
+def mac(csp, var, value, assignment, removals, constraint_propagation=AC3):
     """Maintain arc consistency."""
     return constraint_propagation(csp, {(X, var) for X in csp.neighbors[var]}, removals)
 
@@ -356,7 +388,7 @@ def mac(csp, var, value, assignment, removals, constraint_propagation=AC3b):
 
 import time
 
-def backtracking_search(csp,select_unassigned_variable = mrv,order_domain_values = unordered_domain_values,inference = mac):#no_inference):
+def backtracking_search(csp,select_unassigned_variable = mrv,order_domain_values = unordered_domain_values,inference = forward_checking):
     startTime = time.time()
     def backtrack(assignment,startTime,depth):
         if len(assignment) == len(csp.variables):
@@ -418,7 +450,7 @@ def constraints(A,a,B,b,conDict):
 import os
 
 def my_main():
-    prefix = "2-f24" #!!!!CHANGE NAME!!!!
+    prefix = "3-f11" #!!!!CHANGE NAME!!!!
     print("we will use file" + prefix + "\n")
     variables = []
     #Creating the list variables
