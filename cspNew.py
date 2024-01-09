@@ -170,7 +170,7 @@ def dom_j_up(csp, queue):
     return SortedSet(queue, key=lambda t: neg(len(csp.curr_domains[t[1]])))
 
 
-def AC3(csp, queue=None, removals=None, arc_heuristic=dom_j_up):
+def AC3(csp, queue=None, removals=None, arc_heuristic=no_arc_heuristic):
     """[Figure 6.3]"""
     if queue is None:
         queue = {(Xi, Xk) for Xi in csp.variables for Xk in csp.neighbors[Xi]}
@@ -205,13 +205,14 @@ def revise(csp, Xi, Xj, removals, checks=0):
         if conflict:
             csp.prune(Xi, x, removals)
             revised = True
+            
     return revised, checks
 
 
 # Constraint Propagation with AC3b: an improved version
 # of AC3 with double-support domain-heuristic
 
-def AC3b(csp, queue=None, removals=None, arc_heuristic=dom_j_up):
+def AC3b(csp, queue=None, removals=None, arc_heuristic=no_arc_heuristic):
     if queue is None:
         queue = {(Xi, Xk) for Xi in csp.variables for Xk in csp.neighbors[Xi]}
     csp.support_pruning()
@@ -433,9 +434,64 @@ def mac(csp, var, value, assignment, removals, constraint_propagation=AC3b):
 
 # The search, proper
 
+#Cbj backtracking algorithm
+def cbj_backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order_domain_values = unordered_domain_values,inference = forward_checking):
+    startTime = time.time()
+    def backtrack(assignment,startTime,depth):
+        if len(assignment) == len(csp.variables):
+            return (assignment,0)
+        if (time.time() - startTime > 500):
+            print("Didn't finish\n")
+            return (None,0)
+        var = select_unassigned_variable(assignment,csp)
+        csp.depth[var] = depth
+        for value in order_domain_values(var,assignment,csp):
+            if 0 == csp.nconflicts(var,value,assignment):
+                csp.assign(var,value,assignment)
+                removals = csp.suppose(var,value)
+                if inference(csp,var,value,assignment,removals):
+                    result = backtrack(assignment,startTime,depth + 1)
+                    if result[0] is not None:
+                        return (result[0],0)
+                    if (result[1] > depth):
+                        del csp.depth[var]
+                        csp.unassign(var,assignment)
+                        return (None,result[1])
+                csp.restore(removals)
+            else:
+                for B in csp.neighbors[var]:
+                    if B in assignment:
+                        if (not csp.constraints(var,value,B,assignment[B])):
+                            csp.conflicts[var].add(B)
+        del csp.depth[var]
+        csp.unassign(var,assignment)
+        #Domain is empty
+        # csp.revise(var)   
+        maxDepth = 0
+        max = None
+        for b in csp.conflicts[var]:
 
-def backtracking_search(csp, select_unassigned_variable=dom_wdeg_ordering,
-                        order_domain_values=unordered_domain_values, inference=forward_checking):
+            if (b in csp.depth and maxDepth < csp.depth[b]):
+                maxDepth = csp.depth[b] 
+                max = b
+        if max != None:
+            csp.conflicts[max] = csp.conflicts[max].union(csp.conflicts[var]) 
+            csp.conflicts[max].remove(max)
+        return (None,maxDepth)
+
+
+
+    import datetime
+    result,depth = backtrack({},startTime,0)
+    convert = str(datetime.timedelta(seconds = time.time() - startTime))
+    print("Running time: ",convert)
+    assert result is None or csp.goal_test(result)
+    return result
+
+
+
+def backtracking_search(csp, select_unassigned_variable=mrv,
+                        order_domain_values=unordered_domain_values, inference=mac):
     """[Figure 6.5]"""
 
 
@@ -1476,10 +1532,20 @@ send_more_money = NaryCSP({'S': set(range(1, 10)), 'M': set(range(1, 10)),
                            Constraint(('M', 'C4'), eq)])
 
 
-
 class rlfap(CSP):
+    """The structure of the RLFAP problem as a binary csp.
+        It is a child class of CSP but it also has some additional 
+        features, such as the self.weights, which is a dictionary
+        that stores the weights of the variables required by the 
+        dom/wdeg heuristic.
+        It also contains a dictionary self.conflicts, that
+        matches a variable to it's conflict set (required for 
+        the conflict directed backjumping) and conDict, that is used 
+        by the constraints function.
+    """
+
     def __init__(self, variables, domains, neighbors, conDict):
-        """Construct a CSP problem. If variables is empty, it becomes domains.keys()."""
+        """Construct a RLFAP problem. If variables is empty, it becomes domains.keys()."""
         # super().__init__(variables,domains.neighbors,constraints)
         self.variables = variables
         self.domains = domains
@@ -1497,7 +1563,6 @@ class rlfap(CSP):
         self.conflicts = {}
         for x in variables:
             self.conflicts[x] = set()
-
 
 
     def constraints(self,A,a,B,b):
@@ -1569,12 +1634,7 @@ def my_main():
     problem = rlfap(variables,domains,neighbors,conDict,)
     print("BACKTRACKING STARTING")
     print(backtracking_search(problem))
-    # print(min_conflicts(problem))
  
 
-
-
-if __name__  == "__main__":
+if __name__ == "__main__":
     my_main()
-
-
