@@ -182,6 +182,7 @@ def AC3(csp, queue=None, removals=None, arc_heuristic=no_arc_heuristic):
         revised, checks = revise(csp, Xi, Xj, removals, checks)
         if revised:
             if not csp.curr_domains[Xi]:
+
                 return False, checks  # CSP is inconsistent
             for Xk in csp.neighbors[Xi]:
                 if Xk != Xj:
@@ -205,7 +206,10 @@ def revise(csp, Xi, Xj, removals, checks=0):
         if conflict:
             csp.prune(Xi, x, removals)
             revised = True
-            
+            if not csp.curr_domains[Xi]:
+                csp.weights[(Xi,Xj)] += 1
+                csp.weights[(Xj,Xi)] += 1
+                return False,checks
     return revised, checks
 
 
@@ -427,7 +431,7 @@ def forward_checking(rlfap, var, value, assignment, removals):
     return True
 
 
-def mac(csp, var, value, assignment, removals, constraint_propagation=AC3b):
+def mac(csp, var, value, assignment, removals, constraint_propagation=AC3):
     """Maintain arc consistency."""
     return constraint_propagation(csp, {(X, var) for X in csp.neighbors[var]}, removals)
 
@@ -490,7 +494,7 @@ def cbj_backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,o
 
 
 
-def backtracking_search(csp, select_unassigned_variable=mrv,
+def backtracking_search(csp, select_unassigned_variable=dom_wdeg_ordering,
                         order_domain_values=unordered_domain_values, inference=mac):
     """[Figure 6.5]"""
 
@@ -537,6 +541,8 @@ def min_conflicts(csp, max_steps=100000):
     # Now repeatedly choose a random conflicted variable and change it
     for i in range(max_steps):
         conflicted = csp.conflicted_vars(current)
+        if (i % 50 == 0):
+            print(len(conflicted))
         if not conflicted:
             return current
         var = random.choice(conflicted)
@@ -1577,7 +1583,7 @@ class rlfap(CSP):
 import os
 
 def my_main():
-    prefix = "3-f10" #!!!!CHANGE NAME!!!!
+    prefix = "2-f24" #!!!!CHANGE NAME!!!!
     print("we will use file" + prefix + "\n")
     variables = []
     #Creating the list variables
@@ -1633,7 +1639,9 @@ def my_main():
         
     problem = rlfap(variables,domains,neighbors,conDict,)
     print("BACKTRACKING STARTING")
-    print(backtracking_search(problem))
+    # print(backtracking_search(problem))
+    print(min_conflicts(problem))
+    # print(cbj_backtracking_search(problem))
  
 
 if __name__ == "__main__":
