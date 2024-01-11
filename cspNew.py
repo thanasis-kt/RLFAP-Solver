@@ -427,7 +427,7 @@ def forward_checking(rlfap, var, value, assignment, removals):
                 rlfap.weights[(var,B)] += 1
                 rlfap.weights[(B,var)] += 1
                 return False
-            
+
     return True
 
 
@@ -440,6 +440,7 @@ def mac(csp, var, value, assignment, removals, constraint_propagation=AC3):
 
 #Cbj backtracking algorithm
 def cbj_backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,order_domain_values = unordered_domain_values,inference = forward_checking):
+    print("Conflict directed backtracking")
     startTime = time.time()
     def backtrack(assignment,startTime,depth):
         if len(assignment) == len(csp.variables):
@@ -447,6 +448,7 @@ def cbj_backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,o
         if (time.time() - startTime > 500):
             print("Didn't finish\n")
             return (None,0)
+        csp.nodesVisited += 1
         var = select_unassigned_variable(assignment,csp)
         csp.depth[var] = depth
         for value in order_domain_values(var,assignment,csp):
@@ -495,7 +497,7 @@ def cbj_backtracking_search(csp,select_unassigned_variable = dom_wdeg_ordering,o
 
 
 def backtracking_search(csp, select_unassigned_variable=dom_wdeg_ordering,
-                        order_domain_values=unordered_domain_values, inference=mac):
+                        order_domain_values=unordered_domain_values, inference=forward_checking):
     """[Figure 6.5]"""
 
 
@@ -505,6 +507,7 @@ def backtracking_search(csp, select_unassigned_variable=dom_wdeg_ordering,
         if (time.time() - startTime > 50):
             print("Didn't finish\n")
             return (None,0)
+        csp.nodesVisited += 1
         var = select_unassigned_variable(assignment, csp)
         for value in order_domain_values(var, assignment, csp):
             if 0 == csp.nconflicts(var, value, assignment):
@@ -546,6 +549,7 @@ def min_conflicts(csp, max_steps=100000):
         if not conflicted:
             return current
         var = random.choice(conflicted)
+        csp.nodesVisited += 1 #We are visiting variable Var
         val = min_conflicts_value(csp, var, current)
         csp.assign(var, val, current)
     return None
@@ -1569,9 +1573,12 @@ class rlfap(CSP):
         self.conflicts = {}
         for x in variables:
             self.conflicts[x] = set()
-
+        
+        self.nodesVisited = 0
+        self.conChecks = 0 
 
     def constraints(self,A,a,B,b):
+        self.conChecks += 1
         ctr = self.conDict[(A,B)]
         if (ctr[0] == "="):
             return abs(int(a) - int(b)) == int(ctr[1]) 
@@ -1583,7 +1590,7 @@ class rlfap(CSP):
 import os
 
 def my_main():
-    prefix = "2-f24" #!!!!CHANGE NAME!!!!
+    prefix = "3-f10" #!!!!CHANGE NAME!!!!
     print("we will use file" + prefix + "\n")
     variables = []
     #Creating the list variables
@@ -1640,8 +1647,11 @@ def my_main():
     problem = rlfap(variables,domains,neighbors,conDict,)
     print("BACKTRACKING STARTING")
     # print(backtracking_search(problem))
-    print(min_conflicts(problem))
-    # print(cbj_backtracking_search(problem))
+    print(cbj_backtracking_search(problem))
+    print("Nodes visited: ",problem.nodesVisited)
+    print("Assigns happend: ",problem.nassigns)
+    print("Constraint checks: ",problem.conChecks)
+    # print(min_conflicts(problem))
  
 
 if __name__ == "__main__":
