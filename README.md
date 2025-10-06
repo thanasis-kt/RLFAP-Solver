@@ -27,3 +27,7 @@ The file rlfap_solver.py can solve the RLFAP using the following algorithms:
   constraint checks.
 
   
+# Executing Code
+
+The code was built for solving the rlfap problem using pre-given data sets, so if you want to use it with your own sets, 
+you probably need to change the main file.
